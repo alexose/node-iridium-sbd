@@ -19,6 +19,7 @@ var tf;
 
 var _serialPort;
 var serialEmitter;
+var iridiumData = '';
 
 var OK = /^OK\r/;
 var ALL = /.*/;
@@ -26,32 +27,29 @@ var ALL = /.*/;
 // read line by line or a whole binary blob, depending on the mode
 class CustomParser extends Transform {
     constructor(options) {
-		const opts = {
-			delimiter: Buffer.from('\n', 'utf8'),
-			encoding: 'utf8',
-			...options,
-		};
-        super(opts);
+        super(options);
+        this.includeDelimiter = false;
+        this.delimiter = Buffer.from("\n");
+        this.buffer = Buffer.alloc(0);
     }
 
-	_transform(chunk, encoding, cb) {
+    _transform(chunk, encoding, cb) {
+        // TODO: implement binary mode
+        let data = Buffer.concat([this.buffer, chunk]);
+        let position;
+        while ((position = data.indexOf(this.delimiter)) !== -1) {
+            this.push(data.slice(0, position + (this.includeDelimiter ? this.delimiter.length : 0)));
+            data = data.slice(position + this.delimiter.length);
+        }
+        this.buffer = data;
+        cb();
+    }
 
-		// TODO: implement binary mode
-		let data = Buffer.concat([this.buffer, chunk]);
-		let position;
-		while ((position = data.indexOf(this.delimiter)) !== -1) {
-			this.push(data.slice(0, position + (this.includeDelimiter ? this.delimiter.length : 0)));
-			data = data.slice(position + this.delimiter.length);
-		}
-		this.buffer = data;
-		cb();
-	}
-
-	_flush(cb) {
-		this.push(this.buffer);
-		this.buffer = Buffer.alloc(0);
-		cb();
-	}
+    _flush(cb) {
+        this.push(this.buffer);
+        this.buffer = Buffer.alloc(0);
+        cb();
+    }
 }
 
 // this array contains all possible unsolicited response codes and their
