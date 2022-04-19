@@ -54,7 +54,7 @@ class CustomParser extends Transform {
 	}
 }
 
-// this array contains all possible unsollicited response codes and their
+// this array contains all possible unsolicited response codes and their
 // corresponding handling functions
 
 var iridium = {
@@ -76,7 +76,7 @@ var iridium = {
         port: "/dev/ttyUSB0",
         flowControl: false,
     },
-    // emit a 'ringalert' event if the SBDRING unsollicited response is received
+    // emit a 'ringalert' event if the SBDRING unsolicited response is received
     sbdring: function () {
         iridiumEvents.emit("ringalert");
     },
@@ -99,7 +99,7 @@ var iridium = {
         iridium.log("Registration result: " + regevent + " with error " + regerr);
     },
 
-    unsollicited: {
+    unsolicited: {
         SBDRING: {
             pattern: /^SBDRING/,
             execute: "sbdring",
@@ -324,9 +324,9 @@ var iridium = {
                 return;
             }
 
-            for (x in iridium.unsollicited) {
-                if (iridium.unsollicited[x].pattern.test(data)) {
-                    iridium[iridium.unsollicited[x].execute](data);
+            for (x in iridium.unsolicited) {
+                if (iridium.unsolicited[x].pattern.test(data)) {
+                    iridium[iridium.unsolicited[x].execute](data);
                     return;
                 }
             }
