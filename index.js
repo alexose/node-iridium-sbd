@@ -18,8 +18,7 @@ var er;
 var tf;
 
 var _serialPort;
-var serialEmitter;
-var iridiumData = '';
+var iridiumData = "";
 
 var OK = /^OK\r/;
 var ALL = /.*/;
@@ -34,15 +33,33 @@ class CustomParser extends Transform {
     }
 
     _transform(chunk, encoding, cb) {
-        // TODO: implement binary mode
         let data = Buffer.concat([this.buffer, chunk]);
-        let position;
-        while ((position = data.indexOf(this.delimiter)) !== -1) {
-            this.push(data.slice(0, position + (this.includeDelimiter ? this.delimiter.length : 0)));
-            data = data.slice(position + this.delimiter.length);
+
+        // in binary mode we do not stop at OK or any other regexp, it's all time-based (it reads all available data for bufferTimeout seconds)
+        if (iridium.binary.mode) {
+            data.copy(iridium.binary.buffer, iridium.binary.bufferCounter);
+            iridium.binary.bufferCounter += buffer.length;
+
+            if (!iridium.binary.timeout) {
+                console.log("timeout happened!");
+                iridium.binary.timeout = setTimeout(() => {
+                    var ob = Buffer.alloc(iridium.binary.bufferCounter);
+                    iridium.binary.buffer.copy(ob, 0, 0, ob.length);
+                    this.push(ob);
+                    iridium.binary.bufferCounter = 0;
+                    iridium.binary.mode = false;
+                    cb();
+                }, bufferTimeout);
+            }
+        } else {
+            let position;
+            while ((position = data.indexOf(this.delimiter)) !== -1) {
+                this.push(data.slice(0, position + (this.includeDelimiter ? this.delimiter.length : 0)));
+                data = data.slice(position + this.delimiter.length);
+            }
+            cb();
         }
         this.buffer = data;
-        cb();
     }
 
     _flush(cb) {
@@ -280,16 +297,8 @@ var iridium = {
         });
     },
 
-    // in binary mode we do not stop at OK or any other regexp, it's all time-based (it reads all available data for bufferTimeout seconds)
     enableBinaryMode: function (bufferTimeout) {
         iridium.binary.mode = true;
-        setTimeout(function () {
-            var ob = Buffer.alloc(iridium.binary.bufferCounter);
-            iridium.binary.buffer.copy(ob, 0, 0, ob.length);
-            serialEmitter.emit("data", ob);
-            iridium.binary.bufferCounter = 0;
-            iridium.binary.mode = false;
-        }, bufferTimeout);
     },
 
     // open the serial port
