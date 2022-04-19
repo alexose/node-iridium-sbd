@@ -312,8 +312,8 @@ var iridium = {
             buffersize: 512,
         });
         const parser = new CustomParser();
-        _serialPort.pipe(parser);
-        _serialPort.on("data", function (data) {
+        const pipe = _serialPort.pipe(parser);
+        pipe.on("data", function (data) {
             iridium.log("< " + data);
             if (!er) {
                 df(null, data);
