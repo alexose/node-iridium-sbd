@@ -7,7 +7,7 @@
 
 var zlib = require("zlib"),
     async = require("async"),
-    SerialPort = require("serialport"),
+    {SerialPort} = require("serialport"),
     EventEmitter = require("events").EventEmitter;
 
 var iridiumEvents = new EventEmitter();
@@ -294,14 +294,10 @@ var iridium = {
                 }
                 iridium.log("set option: " + key + ": " + config[key]);
             }
-            /*
-	        if (config.debug) debug=config.debug;
-	        if (config.port) port=config.port;
-					iridium.globals.flowControl=!!config.flowControl;
-*/
         }
-        _serialPort = new SerialPort(iridium.globals.port, {
-            baudrate: iridium.globals.baudrate,
+        _serialPort = new SerialPort({
+            path: iridium.globals.port,
+            baudRate: iridium.globals.baudrate,
             buffersize: 512,
             parser: iridium.readSBD,
         });
