@@ -9,7 +9,6 @@ var zlib = require("zlib"),
     async = require("async"),
     {Transform} = require("stream"),
     {SerialPort} = require("serialport"),
-    {ReadlineParser} = require("@serialport/parser-readline"),
     EventEmitter = require("events").EventEmitter;
 
 var iridiumEvents = new EventEmitter();
@@ -25,37 +24,34 @@ var OK = /^OK\r/;
 var ALL = /.*/;
 
 // read line by line or a whole binary blob, depending on the mode
-class CustomPerser extends Transform {
-    /*
-    readSBD: function (emitter, buffer) {
-		constructor(options) {
-			super(options);
-			if (typeof options.length !== 'number') {
-				throw new TypeError('"length" is not a number');
-			}
-			if (options.length < 1) {
-				throw new TypeError('"length" is not greater than 0');
-			}
-			this.length = options.length;
-			this.position = 0;
-			this.buffer = Buffer.alloc(this.length);
-		}
+class CustomParser extends Transform {
+    constructor(options) {
+		const opts = {
+			delimiter: Buffer.from('\n', 'utf8'),
+			encoding: 'utf8',
+			...options,
+		};
+        super(opts);
+    }
 
-        if (iridium.binary.mode) {
-            buffer.copy(iridium.binary.buffer, iridium.binary.bufferCounter);
-            iridium.binary.bufferCounter += buffer.length;
-        } else {
-            // Collect data
-            iridium.data += buffer.toString("binary");
-            // Split collected data by delimiter
-            var parts = iridium.data.split("\n");
-            iridium.data = parts.pop();
-            parts.forEach(function (part, i, array) {
-                emitter.emit("data", part);
-            });
-        }
-    },
-	*/
+	_transform(chunk, encoding, cb) {
+
+		// TODO: implement binary mode
+		let data = Buffer.concat([this.buffer, chunk]);
+		let position;
+		while ((position = data.indexOf(this.delimiter)) !== -1) {
+			this.push(data.slice(0, position + (this.includeDelimiter ? this.delimiter.length : 0)));
+			data = data.slice(position + this.delimiter.length);
+		}
+		this.buffer = data;
+		cb();
+	}
+
+	_flush(cb) {
+		this.push(this.buffer);
+		this.buffer = Buffer.alloc(0);
+		cb();
+	}
 }
 
 // this array contains all possible unsollicited response codes and their
@@ -317,8 +313,7 @@ var iridium = {
             baudRate: iridium.globals.baudrate,
             buffersize: 512,
         });
-        // const parser = new CustomParser();
-        const parser = new ReadlineParser({delimiter: "\n"});
+        const parser = new CustomParser();
         _serialPort.pipe(parser);
         _serialPort.on("data", function (data) {
             iridium.log("< " + data);
