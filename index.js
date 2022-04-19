@@ -7,7 +7,9 @@
 
 var zlib = require("zlib"),
     async = require("async"),
+    {Transform} = require("stream"),
     {SerialPort} = require("serialport"),
+    {ReadlineParser} = require("@serialport/parser-readline"),
     EventEmitter = require("events").EventEmitter;
 
 var iridiumEvents = new EventEmitter();
@@ -22,6 +24,40 @@ var serialEmitter;
 var OK = /^OK\r/;
 var ALL = /.*/;
 
+// read line by line or a whole binary blob, depending on the mode
+class CustomPerser extends Transform {
+    /*
+    readSBD: function (emitter, buffer) {
+		constructor(options) {
+			super(options);
+			if (typeof options.length !== 'number') {
+				throw new TypeError('"length" is not a number');
+			}
+			if (options.length < 1) {
+				throw new TypeError('"length" is not greater than 0');
+			}
+			this.length = options.length;
+			this.position = 0;
+			this.buffer = Buffer.alloc(this.length);
+		}
+
+        if (iridium.binary.mode) {
+            buffer.copy(iridium.binary.buffer, iridium.binary.bufferCounter);
+            iridium.binary.bufferCounter += buffer.length;
+        } else {
+            // Collect data
+            iridium.data += buffer.toString("binary");
+            // Split collected data by delimiter
+            var parts = iridium.data.split("\n");
+            iridium.data = parts.pop();
+            parts.forEach(function (part, i, array) {
+                emitter.emit("data", part);
+            });
+        }
+    },
+	*/
+}
+
 // this array contains all possible unsollicited response codes and their
 // corresponding handling functions
 
@@ -29,7 +65,7 @@ var iridium = {
     buffer: "",
     data: "",
     messagePending: 0,
-    binary: {mode: false, buffer: new Buffer(512), bufferCounter: 0},
+    binary: {mode: false, buffer: Buffer.alloc(512), bufferCounter: 0},
     errors: [/ERROR/],
     lock: 0,
     pending: 0,
@@ -167,7 +203,7 @@ var iridium = {
 
         var command = "AT+SBDWB=" + buffer.length;
 
-        var ob = new Buffer(buffer.length + 2);
+        var ob = Buffer.alloc(buffer.length + 2);
         var sum = 0;
         for (var i = 0; i < buffer.length; i++) {
             ob[i] = buffer[i];
@@ -254,31 +290,12 @@ var iridium = {
     enableBinaryMode: function (bufferTimeout) {
         iridium.binary.mode = true;
         setTimeout(function () {
-            var ob = new Buffer(iridium.binary.bufferCounter);
+            var ob = Buffer.alloc(iridium.binary.bufferCounter);
             iridium.binary.buffer.copy(ob, 0, 0, ob.length);
             serialEmitter.emit("data", ob);
             iridium.binary.bufferCounter = 0;
             iridium.binary.mode = false;
         }, bufferTimeout);
-    },
-
-    // read line by line or a whole binary blob, depending on the mode
-    readSBD: function (emitter, buffer) {
-        serialEmitter = emitter;
-
-        if (iridium.binary.mode) {
-            buffer.copy(iridium.binary.buffer, iridium.binary.bufferCounter);
-            iridium.binary.bufferCounter += buffer.length;
-        } else {
-            // Collect data
-            iridium.data += buffer.toString("binary");
-            // Split collected data by delimiter
-            var parts = iridium.data.split("\n");
-            iridium.data = parts.pop();
-            parts.forEach(function (part, i, array) {
-                emitter.emit("data", part);
-            });
-        }
     },
 
     // open the serial port
@@ -299,8 +316,10 @@ var iridium = {
             path: iridium.globals.port,
             baudRate: iridium.globals.baudrate,
             buffersize: 512,
-            parser: iridium.readSBD,
         });
+        // const parser = new CustomParser();
+        const parser = new ReadlineParser({delimiter: "\n"});
+        _serialPort.pipe(parser);
         _serialPort.on("data", function (data) {
             iridium.log("< " + data);
             if (!er) {
@@ -427,7 +446,7 @@ var iridium = {
 
                 var ib = buffer;
                 var messageLength = ib.readUInt16BE(0);
-                var messageBuffer = new Buffer(messageLength);
+                var messageBuffer = Buffer.alloc(messageLength);
                 ib.copy(messageBuffer, 0, 2, messageLength + 2);
 
                 iridium.log("Received message is " + messageBuffer.toString("hex"));
