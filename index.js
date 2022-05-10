@@ -168,7 +168,10 @@ var iridium = {
                 iridium.log("Text compressed, initial length " + text.length + ", compressed length " + buffer.length);
 
                 iridium.c_attempt = 0;
-                iridium.mailboxSend(buffer, callback);
+
+                setTimeout(() => {
+                    iridium.mailboxSend(buffer, callback);
+                }, 100);
             }
         });
     },
@@ -214,6 +217,7 @@ var iridium = {
     },
 
     sendBinaryMessage: function (message, callback, maxWait) {
+        console.log("SEND BINARY MESSAGE.  " + message);
         if (message.length == 0) {
             iridium.sendMessage(message, callback, maxWait);
             return;
