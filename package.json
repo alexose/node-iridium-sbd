@@ -11,14 +11,15 @@
       "name": "Razvan Dragomirescu",
       "email": "razvan.dragomirescu@veri.fi"
     }
-	],
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/dudewheresmycode/node-iridium-sbd"
   },
   "dependencies": {
-	  "async": "*",
-	  "serialport": "10.4.0"
-	}
+    "async": "*",
+    "serialport": "10.4.0",
+    "unishox2.siara.cc": "^1.0.1"
+  }
 }

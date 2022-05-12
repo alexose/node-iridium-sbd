@@ -11,6 +11,8 @@ var zlib = require("zlib"),
     {SerialPort} = require("serialport"),
     EventEmitter = require("events").EventEmitter;
 
+var compress = require("./compress.js").compress;
+
 var iridiumEvents = new EventEmitter();
 
 var df;
@@ -41,12 +43,15 @@ class CustomParser extends Transform {
             iridium.binary.bufferCounter += chunk.length;
 
             if (!iridium.binary.timeout) {
+                console.log("Buffer timing out in " + iridium.binary.bufferTimeout);
                 iridium.binary.timeout = setTimeout(() => {
+                    console.log("Buffer timed out!");
                     var ob = Buffer.alloc(iridium.binary.bufferCounter);
                     iridium.binary.buffer.copy(ob, 0, 0, ob.length);
                     this.push(ob);
                     iridium.binary.bufferCounter = 0;
                     iridium.binary.mode = false;
+                    iridium.binary.timeout = false;
                     cb();
                 }, iridium.binary.bufferTimeout);
             }
@@ -87,6 +92,7 @@ var iridium = {
         simpleTimeout: 2000, // 2 seconds timeout for simple command such as "echo off" (ATE0)
         timeoutForever: -1,
         maxAttempts: 10, //max attempts to send a message
+        maxWait: 60000,
         port: "/dev/ttyUSB0",
         flowControl: false,
     },
@@ -163,17 +169,14 @@ var iridium = {
     },
 
     sendCompressedMessage: function (text, callback) {
-        zlib.deflateRaw(new Buffer(text, "utf-8"), function (err, buffer) {
-            if (!err) {
-                iridium.log("Text compressed, initial length " + text.length + ", compressed length " + buffer.length);
+        const buffer = compress(text);
 
-                iridium.c_attempt = 0;
+        iridium.log("Text compressed, initial length " + text.length + ", compressed length " + buffer.length);
+        iridium.c_attempt = 0;
 
-                setTimeout(() => {
-                    iridium.mailboxSend(buffer, callback);
-                }, 100);
-            }
-        });
+        setTimeout(() => {
+            iridium.mailboxSend(buffer, callback);
+        }, 100);
     },
 
     mailboxCheck: function (callback) {
@@ -217,7 +220,6 @@ var iridium = {
     },
 
     sendBinaryMessage: function (message, callback, maxWait) {
-        console.log("SEND BINARY MESSAGE.  " + message);
         if (message.length == 0) {
             iridium.sendMessage(message, callback, maxWait);
             return;
@@ -386,6 +388,8 @@ var iridium = {
     },
 
     waitForNetwork: function (callback, maxWait) {
+        // Per the [signal strength](https://docs.rockblock.rock7.com/docs/checking-the-signal-strength) chapter, we shall disable this.
+        /*
         iridium.ATS(
             "AT+CIER=1,1,0,0",
             /\+CIEV:0,[^0]/,
@@ -393,6 +397,8 @@ var iridium = {
             callback,
             iridium.globals.maxWait ? iridium.globals.maxWait : iridium.globals.timeoutForever
         );
+        */
+        callback();
     },
 
     getSystemTime: function (callback) {
@@ -416,7 +422,11 @@ var iridium = {
     },
 
     disableSignalMonitoring: function (callback) {
+        // Per the [signal strength](https://docs.rockblock.rock7.com/docs/checking-the-signal-strength) chapter, we shall disable this.
+        /*
         iridium.ATS("AT+CIER=0,0,0,0", OK, ALL, callback, iridium.globals.simpleTimeout);
+        */
+        callback();
     },
     getSignalQuality: function (callback) {
         iridium.ATS("AT+CSQ", OK, ALL, callback, iridium.globals.simpleTimeout);
@@ -443,6 +453,10 @@ var iridium = {
 
     clearBuffers: function (callback) {
         iridium.ATS("AT+SBDD2", OK, ALL, callback, iridium.globals.simpleTimeout);
+    },
+
+    clearGatewayBuffers: function (callback) {
+        iridium.sendBinaryMessage("FLUSH_MT", callback);
     },
 
     // emit a 'newmessage' event containing the message
@@ -547,30 +561,31 @@ var iridium = {
                     return;
                 }
 
-                if (mtqueued > 0) {
-                    iridium.log("There are still " + mtqueued + " messages waiting!");
-                }
-
                 if (mtstatus == 0) {
                     iridium.log("No MT messages are pending");
                     iridium.finishSession(callback, momsn);
                 } else if (mtstatus == 1) {
                     iridium.log("A MT message has been transferred, use AT+SBDRT to read it");
 
-                    //disableFlowControl(function(){
-
+                    //iridium.disableFlowControl(function () {
                     iridium.readBinaryMessage(mtqueued, function () {
                         iridium.clearMOBuffers(function (err) {
                             iridium.runCallback(callback, [err, momsn]);
                         });
                     });
+                    // });
 
-                    //});
-
-                    return;
+                    // return;
                 } else {
                     iridium.log("Error determining MT status: " + mtstatus);
                     iridium.finishSession(callback, momsn);
+                }
+
+                if (mtqueued > 0) {
+                    iridium.log("There are still " + mtqueued + " messages waiting.");
+                    iridiumEvents.emit("queuedmessage");
+                    // iridium.clearGatewayBuffers(callback);
+                    return;
                 }
             } else {
                 iridium.log("Error parsing SBDIX!");
@@ -579,8 +594,10 @@ var iridium = {
         });
     },
     finishSession: function (callback, momsn) {
-        iridium.clearMOBuffers(function (err) {
-            iridium.runCallback(callback, [err, momsn]);
+        iridium.clearMTBuffers(function (err) {
+            iridium.clearMOBuffers(function (err) {
+                iridium.runCallback(callback, [err, momsn]);
+            });
         });
     },
     // simplified AT command function - when you don't care about the result
@@ -607,7 +624,7 @@ var iridium = {
         if (timeout > 0)
             tf = setTimeout(function () {
                 iridium.log("Sending a timeout event for command " + command);
-                //datafunction("TIMEOUT");
+                datafunction("TIMEOUT");
             }, timeout);
 
         if (command instanceof Buffer) {
