@@ -43,9 +43,7 @@ class CustomParser extends Transform {
             iridium.binary.bufferCounter += chunk.length;
 
             if (!iridium.binary.timeout) {
-                console.log("Buffer timing out in " + iridium.binary.bufferTimeout);
                 iridium.binary.timeout = setTimeout(() => {
-                    console.log("Buffer timed out!");
                     var ob = Buffer.alloc(iridium.binary.bufferCounter);
                     iridium.binary.buffer.copy(ob, 0, 0, ob.length);
                     this.push(ob);
